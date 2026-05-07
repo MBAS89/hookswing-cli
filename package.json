@@ -1,0 +1,38 @@
+{
+  "name": "hookswing-cli",
+  "version": "1.0.4",
+  "description": "CLI for HookSwing — forward and replay webhooks",
+  "main": "src/index.js",
+  "bin": {
+    "hookswing": "./bin/hookswing.js"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "webhook",
+    "cli",
+    "debugging",
+    "ngrok-alternative",
+    "webhook-forwarding",
+    "webhook-replay"
+  ],
+  "author": "HookSwing",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.6.8",
+    "chalk": "^4.1.2",
+    "commander": "^12.0.0",
+    "inquirer": "^8.2.6",
+    "ws": "^8.16.0"
+  }
+}
