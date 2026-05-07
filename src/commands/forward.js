@@ -1,12 +1,12 @@
 const WebSocket = require('ws');
 const axios = require('axios');
 const chalk = require('chalk');
-const { readConfig, writeConfig } = require('../lib/config');
+const { readConfig, writeConfig, clearConfig } = require('../lib/config');
 const { formatWebhookLine } = require('../lib/formatter');
 
 async function refreshToken() {
   const config = readConfig();
-  if (!config?.refreshToken) return false;
+  if (!config?.refreshToken) return null;
 
   try {
     const res = await axios.post(`${config.apiUrl}/api/auth/refresh`, {
@@ -21,7 +21,7 @@ async function refreshToken() {
 
     return res.data.accessToken;
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -58,26 +58,29 @@ async function forward(slug, localUrl, options) {
   let success = 0;
   let failed = 0;
   let reconnectAttempts = 0;
+  let authRetries = 0;
   const maxReconnects = 10;
+  const maxAuthRetries = 3;
   let ws = null;
   let reconnectTimer = null;
   let shuttingDown = false;
 
-  function connect() {
+  function connect(token) {
     if (shuttingDown) return;
 
     const cfg = readConfig();
-    const token = cfg?.accessToken;
+    const connectToken = token || cfg?.accessToken;
 
-    if (!token) {
+    if (!connectToken) {
       console.error(chalk.red('\nAuthentication lost. Run: hookswing login'));
       process.exit(1);
     }
 
-    ws = new WebSocket(`${wsUrl}/ws?token=${token}`);
+    ws = new WebSocket(`${wsUrl}/ws?token=${connectToken}`);
 
     ws.on('open', () => {
       reconnectAttempts = 0;
+      authRetries = 0;
       ws.send(JSON.stringify({ action: 'subscribe', slug }));
     });
 
@@ -145,7 +148,9 @@ async function forward(slug, localUrl, options) {
     });
 
     ws.on('error', (err) => {
-      console.error(chalk.red('\nWebSocket error:'), err.message);
+      if (process.env.HOOKSWING_DEBUG) {
+        console.error(chalk.red('\n[DEBUG] WebSocket error:'), err.message);
+      }
     });
 
     ws.on('close', async (code, reason) => {
@@ -153,20 +158,30 @@ async function forward(slug, localUrl, options) {
 
       const reasonStr = reason?.toString() || '';
 
-      // Auth failures: 1008 = policy violation (our server uses this for auth)
-      // 1006 = abnormal closure (often auth rejected during handshake)
+      if (process.env.HOOKSWING_DEBUG) {
+        console.log(chalk.gray(`[DEBUG] WebSocket closed — code: ${code}, reason: "${reasonStr}"`));
+      }
+
+      // Auth failures: 1008 = policy violation, 1006 = abnormal (often auth rejected during handshake)
       const isAuthError = code === 1008 || code === 1006;
 
       if (isAuthError) {
-        console.log(chalk.yellow('\n⚠ Session expired. Refreshing token...'));
-        const newToken = await refreshToken();
-        if (!newToken) {
-          console.error(chalk.red('\nAuthentication failed. Run: hookswing login'));
+        authRetries++;
+        if (authRetries > maxAuthRetries) {
+          console.error(chalk.red('\nAuthentication failed after 3 attempts. Run: hookswing login'));
+          clearConfig();
           process.exit(1);
         }
-        console.log(chalk.green('✓ Token refreshed. Reconnecting...'));
-        reconnectAttempts = 0;
-        connect();
+
+        console.log(chalk.yellow(`\n⚠ Auth rejected (${code}). Refreshing token... (attempt ${authRetries}/${maxAuthRetries})`));
+        const newToken = await refreshToken();
+        if (!newToken) {
+          console.error(chalk.red('\nToken refresh failed. Run: hookswing login'));
+          clearConfig();
+          process.exit(1);
+        }
+        console.log(chalk.green('✓ Token refreshed. Reconnecting in 1s...'));
+        reconnectTimer = setTimeout(() => connect(newToken), 1000);
         return;
       }
 
@@ -177,7 +192,7 @@ async function forward(slug, localUrl, options) {
       }
 
       const delay = Math.min(1000 * Math.pow(2, reconnectAttempts - 1), 30000);
-      console.log(chalk.yellow(`\n⚠ Disconnected (${code}${reasonStr ? ': ' + reasonStr : ''}). Reconnecting in ${delay / 1000}s...`));
+      console.log(chalk.yellow(`\n⚠ Disconnected (${code}${reasonStr ? ': ' + reasonStr : ''}). Reconnecting in ${delay / 1000}s... (attempt ${reconnectAttempts}/${maxReconnects})`));
 
       reconnectTimer = setTimeout(() => connect(), delay);
     });
