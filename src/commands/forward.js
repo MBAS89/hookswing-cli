@@ -59,13 +59,14 @@ async function forward(slug, localUrl, options) {
   let failed = 0;
   let reconnectAttempts = 0;
   let authRetries = 0;
-  let hasConnected = false;
+  let isConnected = false;
   const maxAuthRetries = 3;
   let ws = null;
   let reconnectTimer = null;
   let heartbeatTimer = null;
   let heartbeatTimeout = null;
   let shuttingDown = false;
+  let silentReconnect = false;
 
   function clearTimers() {
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
@@ -75,11 +76,9 @@ async function forward(slug, localUrl, options) {
 
   function startHeartbeat() {
     clearTimers();
-    // Send heartbeat every 20s
     heartbeatTimer = setInterval(() => {
       if (ws && ws.readyState === 1) {
         ws.send(JSON.stringify({ action: 'heartbeat' }));
-        // If no heartbeat ack within 10s, force reconnect
         heartbeatTimeout = setTimeout(() => {
           if (process.env.HOOKSWING_DEBUG) {
             console.log(chalk.yellow('\n[DEBUG] Heartbeat timeout — forcing reconnect'));
@@ -112,12 +111,16 @@ async function forward(slug, localUrl, options) {
     ws.on('open', () => {
       reconnectAttempts = 0;
       authRetries = 0;
-      if (!hasConnected) {
+      isConnected = true;
+
+      if (silentReconnect) {
+        // Briefly show we're back, then resume silent operation
+        process.stdout.write(chalk.green('\r✓ Back online          \n'));
+        silentReconnect = false;
+      } else if (!isConnected) {
         console.log(chalk.green('✓ Connected'));
-        hasConnected = true;
-      } else {
-        console.log(chalk.green('✓ Reconnected'));
       }
+
       ws.send(JSON.stringify({ action: 'subscribe', slug }));
       startHeartbeat();
     });
@@ -126,7 +129,6 @@ async function forward(slug, localUrl, options) {
       try {
         const msg = JSON.parse(data.toString());
 
-        // Heartbeat response
         if (msg.type === 'heartbeat') {
           if (heartbeatTimeout) {
             clearTimeout(heartbeatTimeout);
@@ -210,6 +212,7 @@ async function forward(slug, localUrl, options) {
     ws.on('close', async (code, reason) => {
       if (shuttingDown) return;
       clearTimers();
+      isConnected = false;
 
       const reasonStr = reason?.toString() || '';
 
@@ -226,25 +229,39 @@ async function forward(slug, localUrl, options) {
           process.exit(1);
         }
 
-        console.log(chalk.yellow(`\n⚠ Auth rejected. Refreshing token... (attempt ${authRetries}/${maxAuthRetries})`));
+        console.log(chalk.yellow(`\n⚠ Session expired. Refreshing... (attempt ${authRetries}/${maxAuthRetries})`));
         const newToken = await refreshToken();
         if (!newToken) {
           console.error(chalk.red('\nToken refresh failed. Run: hookswing login'));
           clearConfig();
           process.exit(1);
         }
-        console.log(chalk.green('✓ Token refreshed. Reconnecting in 1s...'));
-        reconnectTimer = setTimeout(() => connect(newToken), 1000);
+        silentReconnect = true;
+        reconnectTimer = setTimeout(() => connect(newToken), 500);
         return;
       }
 
-      // Any other close code = network issue, just reconnect with backoff
-      // No max limit — we keep trying forever
+      // 1006 and others = network blip. Reconnect silently.
       reconnectAttempts++;
-      const delay = Math.min(1000 * Math.pow(2, Math.min(reconnectAttempts - 1, 5)), 30000);
-      console.log(chalk.yellow(`\n⚠ Disconnected (${code}${reasonStr ? ': ' + reasonStr : ''}). Reconnecting in ${delay / 1000}s... (attempt ${reconnectAttempts})`));
+      const delay = Math.min(500 * Math.pow(2, Math.min(reconnectAttempts - 1, 5)), 15000);
 
-      reconnectTimer = setTimeout(() => connect(), delay);
+      if (reconnectAttempts === 1) {
+        // First disconnect — try immediately, show nothing
+        silentReconnect = true;
+        reconnectTimer = setTimeout(() => connect(), 500);
+      } else if (reconnectAttempts <= 3) {
+        // Brief disconnects — still silent, short backoff
+        silentReconnect = true;
+        reconnectTimer = setTimeout(() => connect(), delay);
+      } else {
+        // Persistent issue — show a subtle message
+        silentReconnect = false;
+        process.stdout.write(chalk.gray(`\rReconnecting${'.'.repeat(reconnectAttempts % 4)}              `));
+        reconnectTimer = setTimeout(() => {
+          silentReconnect = true;
+          connect();
+        }, delay);
+      }
     });
   }
 
