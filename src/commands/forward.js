@@ -63,7 +63,30 @@ async function forward(slug, localUrl, options) {
   const maxAuthRetries = 3;
   let ws = null;
   let reconnectTimer = null;
+  let pingTimer = null;
+  let pongTimeout = null;
   let shuttingDown = false;
+
+  function clearTimers() {
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+    if (pingTimer) { clearInterval(pingTimer); pingTimer = null; }
+    if (pongTimeout) { clearTimeout(pongTimeout); pongTimeout = null; }
+  }
+
+  function startKeepalive() {
+    clearTimers();
+    // Send ping every 25s
+    pingTimer = setInterval(() => {
+      if (ws && ws.readyState === 1) {
+        ws.ping();
+        // If no pong within 10s, force reconnect
+        pongTimeout = setTimeout(() => {
+          console.log(chalk.yellow('\n⚠ Server unresponsive. Forcing reconnect...'));
+          ws.terminate();
+        }, 10000);
+      }
+    }, 25000);
+  }
 
   function connect(token) {
     if (shuttingDown) return;
@@ -76,12 +99,27 @@ async function forward(slug, localUrl, options) {
       process.exit(1);
     }
 
-    ws = new WebSocket(`${wsUrl}/ws?token=${connectToken}`);
+    const wsUrlWithToken = `${wsUrl}/ws?token=${encodeURIComponent(connectToken)}`;
+
+    if (process.env.HOOKSWING_DEBUG) {
+      console.log(chalk.gray(`[DEBUG] Connecting to: ${wsUrl}/ws?token=***`));
+    }
+
+    ws = new WebSocket(wsUrlWithToken);
 
     ws.on('open', () => {
       reconnectAttempts = 0;
       authRetries = 0;
+      console.log(chalk.green('✓ Connected'));
       ws.send(JSON.stringify({ action: 'subscribe', slug }));
+      startKeepalive();
+    });
+
+    ws.on('pong', () => {
+      if (pongTimeout) {
+        clearTimeout(pongTimeout);
+        pongTimeout = null;
+      }
     });
 
     ws.on('message', async (data) => {
@@ -147,6 +185,12 @@ async function forward(slug, localUrl, options) {
       }
     });
 
+    ws.on('unexpected-response', (req, res) => {
+      if (process.env.HOOKSWING_DEBUG) {
+        console.error(chalk.red(`[DEBUG] HTTP ${res.statusCode} during WebSocket upgrade: ${res.statusMessage}`));
+      }
+    });
+
     ws.on('error', (err) => {
       if (process.env.HOOKSWING_DEBUG) {
         console.error(chalk.red('\n[DEBUG] WebSocket error:'), err.message);
@@ -155,6 +199,7 @@ async function forward(slug, localUrl, options) {
 
     ws.on('close', async (code, reason) => {
       if (shuttingDown) return;
+      clearTimers();
 
       const reasonStr = reason?.toString() || '';
 
@@ -162,10 +207,9 @@ async function forward(slug, localUrl, options) {
         console.log(chalk.gray(`[DEBUG] WebSocket closed — code: ${code}, reason: "${reasonStr}"`));
       }
 
-      // Auth failures: 1008 = policy violation, 1006 = abnormal (often auth rejected during handshake)
-      const isAuthError = code === 1008 || code === 1006;
-
-      if (isAuthError) {
+      // 1008 = Policy Violation — server explicitly rejected us (auth)
+      // 1006 = Abnormal Closure — network/proxy/crash, NOT auth
+      if (code === 1008) {
         authRetries++;
         if (authRetries > maxAuthRetries) {
           console.error(chalk.red('\nAuthentication failed after 3 attempts. Run: hookswing login'));
@@ -173,7 +217,7 @@ async function forward(slug, localUrl, options) {
           process.exit(1);
         }
 
-        console.log(chalk.yellow(`\n⚠ Auth rejected (${code}). Refreshing token... (attempt ${authRetries}/${maxAuthRetries})`));
+        console.log(chalk.yellow(`\n⚠ Auth rejected. Refreshing token... (attempt ${authRetries}/${maxAuthRetries})`));
         const newToken = await refreshToken();
         if (!newToken) {
           console.error(chalk.red('\nToken refresh failed. Run: hookswing login'));
@@ -185,6 +229,7 @@ async function forward(slug, localUrl, options) {
         return;
       }
 
+      // Any other close code = network issue, just reconnect with backoff
       reconnectAttempts++;
       if (reconnectAttempts > maxReconnects) {
         console.error(chalk.red(`\nDisconnected. Max reconnection attempts (${maxReconnects}) reached.`));
@@ -206,8 +251,8 @@ async function forward(slug, localUrl, options) {
 
   process.on('SIGINT', () => {
     shuttingDown = true;
+    clearTimers();
     clearInterval(keepAlive);
-    if (reconnectTimer) clearTimeout(reconnectTimer);
     console.log();
     console.log(chalk.gray(`Requests: ${total}  │  Success: ${success}  │  Failed: ${failed}`));
     if (ws) ws.close();
