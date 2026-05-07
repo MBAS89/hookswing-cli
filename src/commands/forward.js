@@ -59,33 +59,35 @@ async function forward(slug, localUrl, options) {
   let failed = 0;
   let reconnectAttempts = 0;
   let authRetries = 0;
-  const maxReconnects = 10;
+  let hasConnected = false;
   const maxAuthRetries = 3;
   let ws = null;
   let reconnectTimer = null;
-  let pingTimer = null;
-  let pongTimeout = null;
+  let heartbeatTimer = null;
+  let heartbeatTimeout = null;
   let shuttingDown = false;
 
   function clearTimers() {
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
-    if (pingTimer) { clearInterval(pingTimer); pingTimer = null; }
-    if (pongTimeout) { clearTimeout(pongTimeout); pongTimeout = null; }
+    if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
+    if (heartbeatTimeout) { clearTimeout(heartbeatTimeout); heartbeatTimeout = null; }
   }
 
-  function startKeepalive() {
+  function startHeartbeat() {
     clearTimers();
-    // Send ping every 25s
-    pingTimer = setInterval(() => {
+    // Send heartbeat every 20s
+    heartbeatTimer = setInterval(() => {
       if (ws && ws.readyState === 1) {
-        ws.ping();
-        // If no pong within 10s, force reconnect
-        pongTimeout = setTimeout(() => {
-          console.log(chalk.yellow('\n⚠ Server unresponsive. Forcing reconnect...'));
+        ws.send(JSON.stringify({ action: 'heartbeat' }));
+        // If no heartbeat ack within 10s, force reconnect
+        heartbeatTimeout = setTimeout(() => {
+          if (process.env.HOOKSWING_DEBUG) {
+            console.log(chalk.yellow('\n[DEBUG] Heartbeat timeout — forcing reconnect'));
+          }
           ws.terminate();
         }, 10000);
       }
-    }, 25000);
+    }, 20000);
   }
 
   function connect(token) {
@@ -110,21 +112,29 @@ async function forward(slug, localUrl, options) {
     ws.on('open', () => {
       reconnectAttempts = 0;
       authRetries = 0;
-      console.log(chalk.green('✓ Connected'));
-      ws.send(JSON.stringify({ action: 'subscribe', slug }));
-      startKeepalive();
-    });
-
-    ws.on('pong', () => {
-      if (pongTimeout) {
-        clearTimeout(pongTimeout);
-        pongTimeout = null;
+      if (!hasConnected) {
+        console.log(chalk.green('✓ Connected'));
+        hasConnected = true;
+      } else {
+        console.log(chalk.green('✓ Reconnected'));
       }
+      ws.send(JSON.stringify({ action: 'subscribe', slug }));
+      startHeartbeat();
     });
 
     ws.on('message', async (data) => {
       try {
         const msg = JSON.parse(data.toString());
+
+        // Heartbeat response
+        if (msg.type === 'heartbeat') {
+          if (heartbeatTimeout) {
+            clearTimeout(heartbeatTimeout);
+            heartbeatTimeout = null;
+          }
+          return;
+        }
+
         if (msg.type !== 'webhook' || !msg.data) return;
 
         const webhook = msg.data;
@@ -208,7 +218,6 @@ async function forward(slug, localUrl, options) {
       }
 
       // 1008 = Policy Violation — server explicitly rejected us (auth)
-      // 1006 = Abnormal Closure — network/proxy/crash, NOT auth
       if (code === 1008) {
         authRetries++;
         if (authRetries > maxAuthRetries) {
@@ -230,14 +239,10 @@ async function forward(slug, localUrl, options) {
       }
 
       // Any other close code = network issue, just reconnect with backoff
+      // No max limit — we keep trying forever
       reconnectAttempts++;
-      if (reconnectAttempts > maxReconnects) {
-        console.error(chalk.red(`\nDisconnected. Max reconnection attempts (${maxReconnects}) reached.`));
-        process.exit(1);
-      }
-
-      const delay = Math.min(1000 * Math.pow(2, reconnectAttempts - 1), 30000);
-      console.log(chalk.yellow(`\n⚠ Disconnected (${code}${reasonStr ? ': ' + reasonStr : ''}). Reconnecting in ${delay / 1000}s... (attempt ${reconnectAttempts}/${maxReconnects})`));
+      const delay = Math.min(1000 * Math.pow(2, Math.min(reconnectAttempts - 1, 5)), 30000);
+      console.log(chalk.yellow(`\n⚠ Disconnected (${code}${reasonStr ? ': ' + reasonStr : ''}). Reconnecting in ${delay / 1000}s... (attempt ${reconnectAttempts})`));
 
       reconnectTimer = setTimeout(() => connect(), delay);
     });
