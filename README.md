@@ -1,4 +1,4 @@
-# hookswing-cli
+# hookswing
 
 <p align="center">
   <img src="https://hookswing.com/logo.svg" width="80" alt="HookSwing">
@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/hookswing-cli"><img src="https://img.shields.io/npm/v/hookswing-cli.svg?style=flat-square&color=%2310B981" alt="npm version"></a>
+  <a href="https://www.npmjs.com/package/hookswing"><img src="https://img.shields.io/npm/v/hookswing.svg?style=flat-square&color=%2310B981" alt="npm version"></a>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-%2310B981?style=flat-square" alt="License: MIT"></a>
   <a href="https://nodejs.org/"><img src="https://img.shields.io/badge/Node.js-16%2B-%23339933?style=flat-square" alt="Node.js"></a>
   <a href="https://github.com/MBAS89/hookswing-cli/stargazers"><img src="https://img.shields.io/github/stars/MBAS89/hookswing-cli?style=flat-square&color=%23F59E0B" alt="GitHub stars"></a>
@@ -38,7 +38,7 @@
 ## Install
 
 ```bash
-npm install -g hookswing-cli
+npm install -g hookswing
 ```
 
 Requires Node.js 16 or higher.

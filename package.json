@@ -1,5 +1,5 @@
 {
-  "name": "hookswing-cli",
+  "name": "hookswing",
   "version": "1.0.5",
   "description": "CLI for HookSwing — forward and replay webhooks",
   "main": "src/index.js",
