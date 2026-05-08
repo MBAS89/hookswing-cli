@@ -72,6 +72,9 @@ async function forward(slug, localUrl, options) {
     return `${h}:${m}:${s}`;
   }
 
+  let total = 0;
+  let success = 0;
+
   // Print usage stats
   function printStats() {
     const used = planLimit.used + total;
@@ -90,9 +93,6 @@ async function forward(slug, localUrl, options) {
   console.log('\n');
   console.log(chalk.gray('  [Press Ctrl+C to stop]'));
   console.log();
-
-  let total = 0;
-  let success = 0;
   let failed = 0;
   let reconnectAttempts = 0;
   let authRetries = 0;
