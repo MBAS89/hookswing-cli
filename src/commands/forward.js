@@ -2,7 +2,7 @@ const WebSocket = require('ws');
 const axios = require('axios');
 const chalk = require('chalk');
 const { readConfig, writeConfig, clearConfig } = require('../lib/config');
-const { formatWebhookLine } = require('../lib/formatter');
+const { formatWebhookLine, printLogo } = require('../lib/formatter');
 
 async function refreshToken() {
   const config = readConfig();
@@ -47,11 +47,11 @@ async function forward(slug, localUrl, options) {
     // ignore
   }
 
-  console.log(chalk.cyan('🪝 HookSwing Forwarder'));
-  console.log(chalk.gray(`   Project: ${projectName} (${slug})`));
-  console.log(chalk.gray(`   Target:  ${localUrl}`));
+  printLogo();
+  console.log(chalk.gray(`  Project: ${projectName} (${slug})`));
+  console.log(chalk.gray(`  Target:  ${localUrl}`));
   console.log();
-  console.log(chalk.gray('   [Press Ctrl+C to stop]'));
+  console.log(chalk.gray('  [Press Ctrl+C to stop]'));
   console.log();
 
   let total = 0;
