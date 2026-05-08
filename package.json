@@ -1,6 +1,6 @@
 {
   "name": "hookswing",
-  "version": "1.0.11",
+  "version": "1.0.12",
   "description": "CLI for HookSwing — forward and replay webhooks",
   "main": "src/index.js",
   "bin": {
