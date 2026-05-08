@@ -27,10 +27,14 @@
 | **History** | None | Full feed in your dashboard |
 | **Replay** | Manual curl | Built-in `hookswing replay` |
 | **Team sharing** | Paste URLs in Slack | One project, whole team sees everything |
+| **Path preservation** | ✗ | ✓ — routes preserved (`/api/webhook` stays intact) |
+| **GitHub login** | ✗ | ✓ — one-click OAuth, no typing |
 
 - **No tunnels** — Uses WebSockets, not TCP tunnels. Your laptop can sleep and wake up without breaking the connection.
 - **Zero config** — One command, no YAML files, no port forwarding.
 - **Replay built-in** — Re-send any past webhook from the terminal.
+- **Path preservation** — Webhooks sent to `/hook/abc123/api/webhook` forward to `http://localhost:3000/api/webhook` automatically.
+- **GitHub OAuth** — Log in with `--github` and skip typing credentials entirely.
 - **Open source & free** — MIT-licensed. Free forever.
 
 ---
@@ -51,8 +55,11 @@ Requires Node.js 16 or higher.
 # 1. Authenticate with your HookSwing account
 hookswing login
 
+# Or log in via GitHub (opens browser automatically)
+hookswing login --github
+
 # 2. Forward webhooks from your project to localhost
-hookswing forward abc123 http://localhost:3000/webhook
+hookswing forward abc123 http://localhost:3000
 
 # 3. List your projects
 hookswing list
@@ -64,7 +71,7 @@ hookswing replay wh_123abc http://localhost:3000/webhook
 You can also use your **custom slug** instead of the random string:
 
 ```bash
-hookswing forward my-company http://localhost:3000/webhook
+hookswing forward my-company http://localhost:3000
 ```
 
 ---
@@ -82,6 +89,17 @@ hookswing login
 # ✓ Authenticated as dev@example.com
 ```
 
+**Log in with GitHub OAuth** (no password typing):
+
+```bash
+hookswing login --github
+# → Opens browser to GitHub authorization
+# → Returns to terminal automatically
+# ✓ Authenticated as githubuser
+```
+
+The `--github` flag starts a temporary local callback server on a random port. Your browser redirects back to the CLI automatically after GitHub authorization — no copy-paste needed.
+
 ### `logout`
 
 Removes stored credentials.
@@ -96,31 +114,57 @@ hookswing logout
 Forwards webhooks from your HookSwing project to a local server.
 
 ```bash
-hookswing forward abc123 http://localhost:3000/webhook
+hookswing forward abc123 http://localhost:3000
 ```
+
+**Path preservation:** If a webhook is sent to `/hook/abc123/api/webhook`, it forwards to `http://localhost:3000/api/webhook` automatically. The original path after the slug is preserved.
 
 **How it works:**
 1. Opens a WebSocket connection to HookSwing
 2. Subscribes to your project's slug
 3. When a webhook hits your public URL, the server pushes it via WebSocket
-4. The CLI forwards the HTTP request to your local server
-5. Prints status code, response time, and payload size
+4. The CLI forwards the HTTP request to your local server (with original path intact)
+5. Prints colored status code, response time, and payload size
+6. Auto-refreshes auth tokens when they expire (no manual re-login)
 
 **Output:**
 
 ```
-🪝 HookSwing Forwarder
-   Project: My SaaS (abc123)
-   Target:  http://localhost:3000/webhook
+  _    _               ____                  _     
+ | |  | |             / ___| _   _ ___  __ _| |    
+ | |__| | _____      _\___ \| | | / __|/ _` | |    
+ |  __  |/ _ \ \ /\ / /___) | |_| \__ \ (_| | |    
+ | |  | | (_) \ V  V //___ \>  _ <| |_) \__,_| |    
+ |_|  |_|\___/ \_/\_/ \____/_| \_\ .__/ \__, |_|    
+                                 |_|    |___/      
 
-   [Press Ctrl+C to stop]
+  Target: http://localhost:3000
+  Project: My SaaS (abc123)
 
-[03:17:42] POST  200  1.2KB  45ms  stripe:invoice.payment_succeeded
-[03:18:15] POST  500  0.8KB  12ms  github:push  ⚠️ Server Error
-[03:20:01] POST  200  2.4KB  89ms  custom:paygate_callback
+  Session: 00:12:34  |  Requests: 8 / 100 ████████░░
 
-Requests: 3  │  Success: 2  │  Failed: 1
+  [Press Ctrl+C to stop]
+
+[03:17:42] POST   /api/webhook       200   (stripe)
+[03:18:15] POST   /api/webhook       500   (stripe)  ⚠️ Server Error
+[03:20:01] GET    /health            200   (custom)
+[03:21:09] PUT    /api/users/42      204   (github)
+
+Requests: 4  │  Success: 3  │  Failed: 1
 ```
+
+**Method colors:**
+- `GET` — Sky blue
+- `POST` — Emerald green
+- `PUT` — Amber
+- `PATCH` — Purple
+- `DELETE` — Red
+
+**Status code colors:**
+- `2xx` — Green
+- `3xx` — Purple
+- `4xx` — Amber
+- `5xx` — Red
 
 **Flags:**
 
@@ -203,16 +247,18 @@ hookswing login
 
 Make sure your email is verified. If you changed your password, re-login.
 
+If using GitHub OAuth and the callback hangs, try again or use email/password login instead.
+
 ### "Connection refused" when forwarding
 
 Your local server isn't running on the specified URL:
 
 ```bash
 # Verify
- curl http://localhost:3000/webhook
+curl http://localhost:3000
 
 # If using Docker, use host.docker.internal instead of localhost
-hookswing forward abc123 http://host.docker.internal:3000/webhook
+hookswing forward abc123 http://host.docker.internal:3000
 ```
 
 ### Webhooks aren't appearing
@@ -220,9 +266,13 @@ hookswing forward abc123 http://host.docker.internal:3000/webhook
 1. Check that the slug is correct: `hookswing list`
 2. Test with curl directly:
    ```bash
-   curl -X POST https://hookswing.com/hook/YOUR_SLUG -d '{"test": true}'
+   curl -X POST https://hookswing.com/hook/YOUR_SLUG/api/test -d '{"test": true}'
    ```
 3. Check your project usage in the web dashboard — you may have hit your plan limit.
+
+### "Token expired" but connection stays
+
+The CLI automatically refreshes your token using the refresh token. No action needed — you'll see a brief `Re-authenticating...` message and the connection continues.
 
 ---
 
@@ -235,21 +285,30 @@ hookswing forward abc123 http://host.docker.internal:3000/webhook
 └──────────────┘                    └─────────────────┘
        ▲                                      ▲
        │         HTTP forward                 │
+       │     (path preserved)                 │
        │                                      │
        └──────────────────────────────────────┘
                    Any webhook sender
                    (Stripe, GitHub, etc.)
 ```
 
-Unlike ngrok, which opens a public TCP tunnel to your machine, HookSwing CLI uses a **WebSocket connection** to the API server. Webhooks hit the public URL, the server stores them, and pushes them to your CLI over the WebSocket. The CLI then makes a local HTTP request to your dev server. This means:
+Unlike ngrok, which opens a public TCP tunnel to your machine, HookSwing CLI uses a **WebSocket connection** to the API server. Webhooks hit the public URL, the server stores them, and pushes them to your CLI over the WebSocket. The CLI then makes a local HTTP request to your dev server, preserving the original path. This means:
 
 - No public ports exposed on your machine
 - Connection survives laptop sleep/wake
 - No "tunnel expired" messages
+- Original request paths forwarded exactly as sent
 
 ---
 
 ## Changelog
+
+### 1.0.15
+
+- **GitHub OAuth login** — `hookswing login --github` opens browser automatically, no copy-paste needed
+- **Auto token refresh** — Connection stays alive when access tokens expire (uses 30-day refresh token)
+- **Path preservation** — Webhooks sent to sub-paths like `/hook/abc123/api/webhook` forward correctly
+- **Visual enhancements** — ASCII logo, colored method/status output, aligned columns, session timer, live usage bar
 
 ### 1.0.4
 
