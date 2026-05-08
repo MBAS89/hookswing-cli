@@ -161,7 +161,7 @@ async function forward(slug, localUrl, options) {
 
           const res = await axios({
             method: webhook.method,
-            url: localUrl,
+            url: localUrl.replace(/\/$/, '') + (webhook.path || ''),
             headers,
             data: body,
             timeout: 30000,
