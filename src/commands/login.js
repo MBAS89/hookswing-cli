@@ -1,5 +1,7 @@
 const inquirer = require('inquirer');
 const chalk = require('chalk');
+const http = require('http');
+const { URL } = require('url');
 const { writeConfig } = require('../lib/config');
 const { getApi } = require('../lib/api');
 
@@ -8,14 +10,26 @@ async function login(options = {}) {
   if (options.github) {
     const api = getApi();
     const baseURL = api.defaults.baseURL.replace('/api', '');
-    const githubUrl = `${baseURL}/api/auth/github?mode=cli`;
+
+    // Start a temporary local HTTP server to receive the callback
+    const server = http.createServer();
+    let serverResolved = false;
+
+    await new Promise((resolve) => {
+      server.listen(0, '127.0.0.1', resolve);
+    });
+
+    const port = (server.address() || {}).port;
+    if (!port) {
+      console.error(chalk.red('Failed to start local callback server'));
+      process.exit(1);
+    }
+
+    const githubUrl = `${baseURL}/api/auth/github?mode=cli&callback_port=${port}`;
 
     console.log(chalk.cyan('🔗 GitHub OAuth Login'));
     console.log('');
-    console.log(chalk.white('Open this URL in your browser:'));
-    console.log(chalk.underline(githubUrl));
-    console.log('');
-    console.log(chalk.gray('After logging in via GitHub, copy the tokens from the page and paste them below.'));
+    console.log(chalk.gray('Opening browser...'));
     console.log('');
 
     // Try to open browser automatically
@@ -25,25 +39,67 @@ async function login(options = {}) {
       if (platform === 'darwin') exec(`open "${githubUrl}"`);
       else if (platform === 'win32') exec(`start "" "${githubUrl}"`);
       else exec(`xdg-open "${githubUrl}"`);
-      console.log(chalk.gray('(Browser opened automatically)'));
     } catch {
-      // ignore — user will copy/paste URL manually
+      console.log(chalk.yellow('Could not open browser automatically.'));
+      console.log(chalk.white('Please open this URL manually:'));
+      console.log(chalk.underline(githubUrl));
     }
 
-    const answers = await inquirer.prompt([
-      { type: 'input', name: 'accessToken', message: 'Access Token:' },
-      { type: 'input', name: 'refreshToken', message: 'Refresh Token:' },
-    ]);
+    // Wait for the callback
+    const tokens = await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        if (!serverResolved) {
+          server.close();
+          reject(new Error('Login timed out. Please try again.'));
+        }
+      }, 120000); // 2 minute timeout
 
-    if (!answers.accessToken || !answers.refreshToken) {
-      console.error(chalk.red('Authentication failed: Both tokens are required'));
-      process.exit(1);
-    }
+      server.on('request', (req, res) => {
+        if (serverResolved) return;
+
+        const url = new URL(req.url || '/', `http://localhost:${port}`);
+        const accessToken = url.searchParams.get('accessToken');
+        const refreshToken = url.searchParams.get('refreshToken');
+
+        if (accessToken && refreshToken) {
+          serverResolved = true;
+          clearTimeout(timeout);
+
+          // Show success page in browser
+          res.writeHead(200, { 'Content-Type': 'text/html' });
+          res.end(`<!DOCTYPE html>
+<html>
+<head><title>HookSwing CLI — Login Success</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0f172a;color:#e2e8f0;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}
+.container{max-width:480px;text-align:center;padding:32px;background:#1e293b;border:1px solid #334155;border-radius:16px}
+.icon{font-size:48px;margin-bottom:16px}
+h1{font-size:22px;margin-bottom:8px;color:#fff}
+p{color:#94a3b8;font-size:14px;line-height:1.5}
+</style>
+</head>
+<body>
+<div class="container">
+<div class="icon">✅</div>
+<h1>Login Successful</h1>
+<p>You can close this window and return to your terminal.</p>
+</div>
+</body>
+</html>`);
+
+          server.close();
+          resolve({ accessToken, refreshToken });
+        } else {
+          res.writeHead(400, { 'Content-Type': 'text/html' });
+          res.end('<h1>Invalid callback</h1><p>Missing tokens. Please try again.</p>');
+        }
+      });
+    });
 
     writeConfig({
       apiUrl: baseURL,
-      accessToken: answers.accessToken.trim(),
-      refreshToken: answers.refreshToken.trim(),
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
     });
 
     console.log(chalk.green('✓ Authenticated with GitHub'));
