@@ -1,7 +1,7 @@
 # hookswing
 
 <p align="center">
-  <img src="https://hookswing.com/logo.svg" width="80" alt="HookSwing">
+  <img src="https://hookswing.com/logo.svg](https://lh3.googleusercontent.com/a/ACg8ocK9cFZfXz5AKBbxOyB4A5nzMEuop-OJNB3QAnn4XM8AehBditA=s288-c-no" width="80" alt="HookSwing">
 </p>
 
 <p align="center">
