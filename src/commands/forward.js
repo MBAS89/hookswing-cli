@@ -35,8 +35,9 @@ async function forward(slug, localUrl, options) {
   const apiUrl = config.apiUrl || 'https://hookswing.com';
   const wsUrl = apiUrl.replace(/^http/, 'ws');
 
-  // Get project info
+  // Get project info and usage
   let projectName = slug;
+  let planLimit = { used: 0, limit: 500 };
   try {
     const projects = await axios.get(`${apiUrl}/api/projects`, {
       headers: { Authorization: `Bearer ${config.accessToken}` },
@@ -47,10 +48,46 @@ async function forward(slug, localUrl, options) {
     // ignore
   }
 
+  try {
+    const me = await axios.get(`${apiUrl}/api/auth/me`, {
+      headers: { Authorization: `Bearer ${config.accessToken}` },
+    });
+    if (me.data.usage) planLimit = me.data.usage;
+  } catch {
+    // ignore
+  }
+
   printLogo();
   console.log(chalk.gray(`  Project: ${projectName} (${slug})`));
   console.log(chalk.gray(`  Target:  ${localUrl}`));
   console.log();
+
+  // Session timer
+  const sessionStart = Date.now();
+  function formatDuration(ms) {
+    const totalSec = Math.floor(ms / 1000);
+    const h = String(Math.floor(totalSec / 3600)).padStart(2, '0');
+    const m = String(Math.floor((totalSec % 3600) / 60)).padStart(2, '0');
+    const s = String(totalSec % 60).padStart(2, '0');
+    return `${h}:${m}:${s}`;
+  }
+
+  // Print usage stats
+  function printStats() {
+    const used = planLimit.used + total;
+    const pct = Math.min(100, Math.round((used / planLimit.limit) * 100));
+    const bar = chalk.green('█'.repeat(Math.floor(pct / 10))) + chalk.gray('░'.repeat(10 - Math.floor(pct / 10)));
+    const sessionTime = formatDuration(Date.now() - sessionStart);
+
+    process.stdout.write('\x1b[2K\r');
+    process.stdout.write(
+      chalk.gray(`  Session: ${chalk.white(sessionTime)}  |  Requests: ${chalk.white(used)} / ${planLimit.limit} ${bar}`)
+    );
+  }
+
+  const statsTimer = setInterval(printStats, 1000);
+  printStats();
+  console.log('\n');
   console.log(chalk.gray('  [Press Ctrl+C to stop]'));
   console.log();
 
@@ -72,6 +109,7 @@ async function forward(slug, localUrl, options) {
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
     if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
     if (heartbeatTimeout) { clearTimeout(heartbeatTimeout); heartbeatTimeout = null; }
+    if (statsTimer) { clearInterval(statsTimer); }
   }
 
   function startHeartbeat() {
@@ -275,6 +313,7 @@ async function forward(slug, localUrl, options) {
     shuttingDown = true;
     clearTimers();
     clearInterval(keepAlive);
+    console.log();
     console.log();
     console.log(chalk.gray(`Requests: ${total}  │  Success: ${success}  │  Failed: ${failed}`));
     if (ws) ws.close();
