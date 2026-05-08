@@ -3,7 +3,54 @@ const chalk = require('chalk');
 const { writeConfig } = require('../lib/config');
 const { getApi } = require('../lib/api');
 
-async function login() {
+async function login(options = {}) {
+  // --- GitHub OAuth login ---
+  if (options.github) {
+    const api = getApi();
+    const baseURL = api.defaults.baseURL.replace('/api', '');
+    const githubUrl = `${baseURL}/api/auth/github?mode=cli`;
+
+    console.log(chalk.cyan('🔗 GitHub OAuth Login'));
+    console.log('');
+    console.log(chalk.white('Open this URL in your browser:'));
+    console.log(chalk.underline(githubUrl));
+    console.log('');
+    console.log(chalk.gray('After logging in via GitHub, copy the tokens from the page and paste them below.'));
+    console.log('');
+
+    // Try to open browser automatically
+    try {
+      const { exec } = require('child_process');
+      const platform = process.platform;
+      if (platform === 'darwin') exec(`open "${githubUrl}"`);
+      else if (platform === 'win32') exec(`start "" "${githubUrl}"`);
+      else exec(`xdg-open "${githubUrl}"`);
+      console.log(chalk.gray('(Browser opened automatically)'));
+    } catch {
+      // ignore — user will copy/paste URL manually
+    }
+
+    const answers = await inquirer.prompt([
+      { type: 'input', name: 'accessToken', message: 'Access Token:' },
+      { type: 'input', name: 'refreshToken', message: 'Refresh Token:' },
+    ]);
+
+    if (!answers.accessToken || !answers.refreshToken) {
+      console.error(chalk.red('Authentication failed: Both tokens are required'));
+      process.exit(1);
+    }
+
+    writeConfig({
+      apiUrl: baseURL,
+      accessToken: answers.accessToken.trim(),
+      refreshToken: answers.refreshToken.trim(),
+    });
+
+    console.log(chalk.green('✓ Authenticated with GitHub'));
+    return;
+  }
+
+  // --- Email/Password login ---
   const answers = await inquirer.prompt([
     { type: 'input', name: 'email', message: 'Email:' },
     { type: 'password', name: 'password', message: 'Password:' },
