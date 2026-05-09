@@ -5,6 +5,7 @@ const logout = require('./commands/logout');
 const forward = require('./commands/forward');
 const list = require('./commands/list');
 const replay = require('./commands/replay');
+const test = require('./commands/test');
 
 const program = new Command();
 
@@ -41,5 +42,10 @@ program
   .command('replay <webhook-id> <local-url>')
   .description('Replay a webhook against a local URL')
   .action(replay);
+
+program
+  .command('test <provider> <event-type> <target-url>')
+  .description('Send a realistic test payload to any URL')
+  .action(test);
 
 program.parse();
