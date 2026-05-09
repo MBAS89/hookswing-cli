@@ -146,26 +146,19 @@ hookswing forward abc123 http://localhost:3000
 
 **Output:**
 
-```
-  _    _               ____                  _     
- | |  | |             / ___| _   _ ___  __ _| |    
- | |__| | _____      _\___ \| | | / __|/ _` | |    
- |  __  |/ _ \ \ /\ / /___) | |_| \__ \ (_| | |    
- | |  | | (_) \ V  V //___ \>  _ <| |_) \__,_| |    
- |_|  |_|\___/ \_/\_/ \____/_| \_\ .__/ \__, |_|    
-                                 |_|    |___/      
+🪝 HookSwing Forwarder
 
-  Target: http://localhost:3000
+  Target:  http://localhost:3000
   Project: My SaaS (abc123)
 
   Session: 00:12:34  |  Requests: 8 / 100 ████████░░
 
   [Press Ctrl+C to stop]
 
-[03:17:42] POST   /api/webhook       200   (stripe)
-[03:18:15] POST   /api/webhook       500   (stripe)  ⚠️ Server Error
-[03:20:01] GET    /health            200   (custom)
-[03:21:09] PUT    /api/users/42      204   (github)
+[03:17:42] POST   /api/stripe/webhook    200   (stripe)
+[03:18:15] POST   /api/paypal/webhook    200   (paypal)
+[03:20:01] GET    /health                200   (custom)
+[03:21:09] PUT    /api/users/42          204   (github)
 
 Requests: 4  │  Success: 3  │  Failed: 1
 ```
