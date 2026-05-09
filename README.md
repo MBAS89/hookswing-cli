@@ -155,10 +155,10 @@ hookswing forward abc123 http://localhost:3000
 
   [Press Ctrl+C to stop]
 
-[03:17:42] POST   /api/stripe/webhook    200   (stripe)
-[03:18:15] POST   /api/paypal/webhook    200   (paypal)
+[03:17:42] POST   /api/stripe/webhook    200   (stripe:charge.succeeded)
+[03:18:15] POST   /api/paypal/webhook    200   (paypal:PAYMENT.CAPTURE.COMPLETED)
 [03:20:01] GET    /health                200   (custom)
-[03:21:09] PUT    /api/users/42          204   (github)
+[03:21:09] PUT    /api/users/42          204   (github:pull_request.opened)
 
 Requests: 4  │  Success: 3  │  Failed: 1
 ```

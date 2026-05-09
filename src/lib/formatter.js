@@ -35,11 +35,17 @@ function colorStatus(status) {
 function formatWebhookLine(webhook, verbose) {
   const time = chalk.gray(`[${timestamp()}]`);
 
+  // Build source label with event type when available
+  let sourceLabel = webhook.source || 'custom';
+  if (webhook.eventType) {
+    sourceLabel += ':' + webhook.eventType;
+  }
+
   // Pad raw strings, then color the entire padded result
   const method = colorMethod(webhook.method.toUpperCase().padEnd(7));
   const path = chalk.white((webhook.path || '/').padEnd(18));
   const status = colorStatus(webhook.statusCode).padEnd(5);
-  const source = chalk.gray(`(${webhook.source || 'custom'})`);
+  const source = chalk.gray(`(${sourceLabel})`);
 
   let line = `${time} ${method} ${path} ${status} ${source}`;
 
