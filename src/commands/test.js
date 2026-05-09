@@ -1,6 +1,7 @@
 const axios = require('axios');
 const chalk = require('chalk');
 const { readConfig } = require('../lib/config');
+const { normalizeUrl } = require('../lib/normalize-url');
 
 const providers = [
   'stripe', 'github', 'paypal', 'shopify', 'twilio',
@@ -8,7 +9,8 @@ const providers = [
   'zoom', 'calendly', 'typeform', 'google', 'square', 'generic',
 ];
 
-async function test(provider, eventType, targetUrl) {
+async function test(provider, eventType, rawUrl) {
+  const targetUrl = normalizeUrl(rawUrl);
   const config = readConfig();
   if (!config?.accessToken) {
     console.error(chalk.red('Not authenticated. Run: hookswing login'));
@@ -32,6 +34,9 @@ async function test(provider, eventType, targetUrl) {
 
   try {
     console.log(chalk.gray(`Sending ${chalk.white(provider)}/${chalk.white(eventType)} → ${targetUrl}...`));
+  if (rawUrl !== targetUrl) {
+    console.log(chalk.gray(`  (normalized from "${rawUrl}")`));
+  }
 
     const res = await axios.post(`${apiUrl}/api/tester/send`, {
       targetUrl,

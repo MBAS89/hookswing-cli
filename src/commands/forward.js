@@ -3,6 +3,7 @@ const axios = require('axios');
 const chalk = require('chalk');
 const { readConfig, writeConfig, clearConfig } = require('../lib/config');
 const { formatWebhookLine, printLogo } = require('../lib/formatter');
+const { normalizeUrl } = require('../lib/normalize-url');
 
 async function refreshToken() {
   const config = readConfig();
@@ -25,7 +26,8 @@ async function refreshToken() {
   }
 }
 
-async function forward(slug, localUrl, options) {
+async function forward(slug, rawUrl, options) {
+  const localUrl = normalizeUrl(rawUrl);
   const config = readConfig();
   if (!config?.accessToken) {
     console.error(chalk.red('Not authenticated. Run: hookswing login'));
@@ -60,6 +62,9 @@ async function forward(slug, localUrl, options) {
   printLogo();
   console.log(chalk.gray(`  Project: ${projectName} (${slug})`));
   console.log(chalk.gray(`  Target:  ${localUrl}`));
+  if (rawUrl !== localUrl) {
+    console.log(chalk.gray(`           (normalized from "${rawUrl}")`));
+  }
   console.log();
 
   // Session timer

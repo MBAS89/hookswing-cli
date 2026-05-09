@@ -31,6 +31,13 @@ program
   .option('-v, --verbose', 'Print full JSON body for every webhook')
   .option('--no-color', 'Disable colored output')
   .option('-q, --quiet', 'Only print errors')
+  .addHelpText('after', `
+Examples:
+  $ hookswing forward abc123 3000
+  $ hookswing forward abc123 localhost:3000
+  $ hookswing forward abc123 http://localhost:3000
+  $ hookswing forward my-company http://localhost:3000/api/webhook
+`)
   .action(forward);
 
 program
@@ -41,11 +48,24 @@ program
 program
   .command('replay <webhook-id> <local-url>')
   .description('Replay a webhook against a local URL')
+  .addHelpText('after', `
+Examples:
+  $ hookswing replay wh_abc123 3000
+  $ hookswing replay wh_abc123 localhost:3000/api/webhook
+  $ hookswing replay wh_abc123 http://localhost:3000/webhook
+`)
   .action(replay);
 
 program
   .command('test <provider> <event-type> <target-url>')
   .description('Send a realistic test payload to any URL')
+  .addHelpText('after', `
+Examples:
+  $ hookswing test stripe invoice.payment_succeeded 3000
+  $ hookswing test stripe invoice.payment_succeeded localhost:3000
+  $ hookswing test github push http://localhost:3000/webhook
+  $ hookswing test shopify orders/create https://hookswing.com/hook/abc123
+`)
   .action(test);
 
 program.parse();

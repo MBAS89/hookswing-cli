@@ -1,8 +1,10 @@
 const axios = require('axios');
 const chalk = require('chalk');
 const { readConfig } = require('../lib/config');
+const { normalizeUrl } = require('../lib/normalize-url');
 
-async function replay(webhookId, localUrl) {
+async function replay(webhookId, rawUrl) {
+  const localUrl = normalizeUrl(rawUrl);
   const config = readConfig();
   if (!config?.accessToken) {
     console.error(chalk.red('Not authenticated. Run: hookswing login'));
@@ -12,6 +14,9 @@ async function replay(webhookId, localUrl) {
   const apiUrl = config.apiUrl || 'https://hookswing.com';
 
   console.log(chalk.cyan(`↻ Replaying webhook ${webhookId}`));
+  if (rawUrl !== localUrl) {
+    console.log(chalk.gray(`  (normalized from "${rawUrl}" → ${localUrl})`));
+  }
 
   try {
     const res = await axios.post(
