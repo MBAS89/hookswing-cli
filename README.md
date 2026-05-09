@@ -29,6 +29,7 @@
 | **Team sharing** | Paste URLs in Slack | One project, whole team sees everything |
 | **Path preservation** | ✗ | ✓ — routes preserved (`/api/webhook` stays intact) |
 | **Webhook tester** | ✗ | ✓ — send realistic payloads from 16+ providers |
+| **URL shorthand** | ✗ | ✓ — type `3000` → `http://localhost:3000` automatically |
 | **GitHub login** | ✗ | ✓ — one-click OAuth, no typing |
 
 - **No tunnels** — Uses WebSockets, not TCP tunnels. Your laptop can sleep and wake up without breaking the connection.
@@ -36,6 +37,7 @@
 - **Replay built-in** — Re-send any past webhook from the terminal.
 - **Webhook tester** — Send realistic test payloads from Stripe, GitHub, Shopify, and 13+ more providers to any URL.
 - **Path preservation** — Webhooks sent to `/hook/abc123/api/webhook` forward to `http://localhost:3000/api/webhook` automatically.
+- **URL shorthand** — Type just the port (`3000`), `localhost:3000`, or the full URL. Any port works.
 - **GitHub OAuth** — Log in with `--github` and skip typing credentials entirely.
 - **Open source & free** — MIT-licensed. Free forever.
 
@@ -61,22 +63,23 @@ hookswing login
 hookswing login --github
 
 # 2. Forward webhooks from your project to localhost
-hookswing forward abc123 http://localhost:3000
+#    Just type the port — any port works (3000, 8080, 1337, etc.)
+hookswing forward abc123 3000
 
 # 3. List your projects
 hookswing list
 
-# 4. Send a test payload
-hookswing test stripe invoice.payment_succeeded https://hookswing.com/hook/abc123
+# 4. Send a test payload (port shorthand works here too)
+hookswing test stripe invoice.payment_succeeded 3000
 
 # 5. Replay a webhook (Pro/Team plans)
-hookswing replay wh_123abc http://localhost:3000/webhook
+hookswing replay wh_123abc 3000
 ```
 
 You can also use your **custom slug** instead of the random string:
 
 ```bash
-hookswing forward my-company http://localhost:3000
+hookswing forward my-company 3000
 ```
 
 ---
@@ -119,8 +122,17 @@ hookswing logout
 Forwards webhooks from your HookSwing project to a local server.
 
 ```bash
+# Port shorthand — 3000 becomes http://localhost:3000
+hookswing forward abc123 3000
+
+# Or localhost:port
+hookswing forward abc123 localhost:3000
+
+# Or the full URL
 hookswing forward abc123 http://localhost:3000
 ```
+
+**URL shorthand:** Type just the port number (`3000`), `localhost:3000`, `127.0.0.1:3000`, or the full URL. Any port works — `8080`, `1337`, `9999`, etc. The CLI automatically prepends `http://` when needed.
 
 **Path preservation:** If a webhook is sent to `/hook/abc123/api/webhook`, it forwards to `http://localhost:3000/api/webhook` automatically. The original path after the slug is preserved.
 
@@ -196,7 +208,8 @@ hookswing list
 Replays a past webhook against a local URL. Requires Pro or Team plan.
 
 ```bash
-hookswing replay wh_123abc456 http://localhost:3000/webhook
+# Port shorthand works here too
+hookswing replay wh_123abc456 3000
 
 # ↻ Replaying webhook wh_123abc456
 #   Original: 2026-05-05 03:17:42
@@ -211,10 +224,11 @@ hookswing replay wh_123abc456 http://localhost:3000/webhook
 Send a realistic test payload from a well-known provider to any URL. Great for testing your webhook handler without setting up the actual integration.
 
 ```bash
-hookswing test stripe invoice.payment_succeeded https://hookswing.com/hook/abc123
-# → 200 OK in 245ms — source: stripe
+# Port shorthand — test against localhost easily
+hookswing test stripe invoice.payment_succeeded 3000
+# → 200 OK in 245ms — source: stripe (normalized from "3000")
 
-hookswing test github push http://localhost:3000/webhook
+hookswing test github push localhost:3000/webhook
 # → 200 OK in 12ms — source: github
 
 hookswing test shopify orders/create https://your-app.com/webhook
@@ -281,6 +295,9 @@ curl http://localhost:3000
 
 # If using Docker, use host.docker.internal instead of localhost
 hookswing forward abc123 http://host.docker.internal:3000
+
+# Port shorthand also works with Docker
+hookswing forward abc123 host.docker.internal:3000
 ```
 
 ### Webhooks aren't appearing
@@ -324,6 +341,10 @@ Unlike ngrok, which opens a public TCP tunnel to your machine, HookSwing CLI use
 ---
 
 ## Changelog
+
+### 1.0.18
+
+- **URL shorthand** — Type just the port number (`3000`) or `localhost:3000` and the CLI auto-expands it to `http://localhost:3000`. Works with `forward`, `replay`, and `test` commands. Any port works.
 
 ### 1.0.16
 
