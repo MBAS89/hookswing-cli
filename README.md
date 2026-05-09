@@ -28,11 +28,13 @@
 | **Replay** | Manual curl | Built-in `hookswing replay` |
 | **Team sharing** | Paste URLs in Slack | One project, whole team sees everything |
 | **Path preservation** | ✗ | ✓ — routes preserved (`/api/webhook` stays intact) |
+| **Webhook tester** | ✗ | ✓ — send realistic payloads from 16+ providers |
 | **GitHub login** | ✗ | ✓ — one-click OAuth, no typing |
 
 - **No tunnels** — Uses WebSockets, not TCP tunnels. Your laptop can sleep and wake up without breaking the connection.
 - **Zero config** — One command, no YAML files, no port forwarding.
 - **Replay built-in** — Re-send any past webhook from the terminal.
+- **Webhook tester** — Send realistic test payloads from Stripe, GitHub, Shopify, and 13+ more providers to any URL.
 - **Path preservation** — Webhooks sent to `/hook/abc123/api/webhook` forward to `http://localhost:3000/api/webhook` automatically.
 - **GitHub OAuth** — Log in with `--github` and skip typing credentials entirely.
 - **Open source & free** — MIT-licensed. Free forever.
@@ -64,7 +66,10 @@ hookswing forward abc123 http://localhost:3000
 # 3. List your projects
 hookswing list
 
-# 4. Replay a webhook (Pro/Team plans)
+# 4. Send a test payload
+hookswing test stripe invoice.payment_succeeded https://hookswing.com/hook/abc123
+
+# 5. Replay a webhook (Pro/Team plans)
 hookswing replay wh_123abc http://localhost:3000/webhook
 ```
 
@@ -201,6 +206,23 @@ hookswing replay wh_123abc456 http://localhost:3000/webhook
 #   Body: {"status": "processed"}
 ```
 
+### `test <provider> <event-type> <target-url>`
+
+Send a realistic test payload from a well-known provider to any URL. Great for testing your webhook handler without setting up the actual integration.
+
+```bash
+hookswing test stripe invoice.payment_succeeded https://hookswing.com/hook/abc123
+# → 200 OK in 245ms — source: stripe
+
+hookswing test github push http://localhost:3000/webhook
+# → 200 OK in 12ms — source: github
+
+hookswing test shopify orders/create https://your-app.com/webhook
+# → 201 Created in 89ms — source: shopify
+```
+
+**Supported providers:** `stripe`, `github`, `paypal`, `shopify`, `twilio`, `slack`, `discord`, `microsoft_teams`, `sendgrid`, `mailgun`, `zoom`, `calendly`, `typeform`, `google`, `square`, `generic`
+
 ---
 
 ## Configuration
@@ -302,6 +324,11 @@ Unlike ngrok, which opens a public TCP tunnel to your machine, HookSwing CLI use
 ---
 
 ## Changelog
+
+### 1.0.16
+
+- **Webhook tester** — `hookswing test` sends realistic payloads from 16+ providers (Stripe, GitHub, Shopify, Twilio, Slack, Discord, etc.) to any URL
+- **Source identification** — Provider headers are recognized so CLI/Web CLI show `stripe`, `github`, etc. instead of `custom`
 
 ### 1.0.15
 
