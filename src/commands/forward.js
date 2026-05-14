@@ -37,17 +37,31 @@ async function forward(slug, rawUrl, options) {
   const apiUrl = config.apiUrl || 'https://hookswing.com';
   const wsUrl = apiUrl.replace(/^http/, 'ws');
 
-  // Get project info and usage
+  // Validate project exists before forwarding
   let projectName = slug;
   let planLimit = { used: 0, limit: 500 };
+  let project = null;
+
   try {
     const projects = await axios.get(`${apiUrl}/api/projects`, {
       headers: { Authorization: `Bearer ${config.accessToken}` },
     });
-    const project = projects.data.projects.find((p) => p.slug === slug || p.customSlug === slug);
-    if (project) projectName = project.name;
-  } catch {
-    // ignore
+    project = projects.data.projects.find((p) => p.slug === slug || p.customSlug === slug);
+
+    if (!project) {
+      console.error(chalk.red(`No project found for slug or custom domain "${slug}"`));
+      console.error(chalk.gray('Run `hookswing list` to see your available projects.'));
+      process.exit(1);
+    }
+
+    projectName = project.name;
+  } catch (err) {
+    if (err.response?.status === 401) {
+      console.error(chalk.red('Authentication expired. Run: hookswing login'));
+    } else {
+      console.error(chalk.red('Failed to fetch projects:'), err.response?.data?.error || err.message);
+    }
+    process.exit(1);
   }
 
   try {
