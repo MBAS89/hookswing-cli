@@ -60,11 +60,11 @@ function getApi() {
 
         const newAccessToken = refreshRes.data.accessToken;
 
-        // Save new token
+        // Save new token (rotate refresh token if server returns one)
         writeConfig({
           apiUrl: cfg.apiUrl,
           accessToken: newAccessToken,
-          refreshToken: cfg.refreshToken,
+          refreshToken: refreshRes.data.refreshToken || cfg.refreshToken,
         });
 
         // Update default header for future requests

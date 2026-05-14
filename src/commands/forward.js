@@ -17,7 +17,7 @@ async function refreshToken() {
     writeConfig({
       apiUrl: config.apiUrl,
       accessToken: res.data.accessToken,
-      refreshToken: config.refreshToken,
+      refreshToken: res.data.refreshToken || config.refreshToken,
     });
 
     return res.data.accessToken;
@@ -109,12 +109,38 @@ async function forward(slug, rawUrl, options) {
   let heartbeatTimeout = null;
   let shuttingDown = false;
   let silentReconnect = false;
+  let proactiveRefreshTimer = null;
+  let proactiveReconnect = false;
 
   function clearTimers() {
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
     if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
     if (heartbeatTimeout) { clearTimeout(heartbeatTimeout); heartbeatTimeout = null; }
     if (statsTimer) { clearInterval(statsTimer); }
+    if (proactiveRefreshTimer) { clearTimeout(proactiveRefreshTimer); proactiveRefreshTimer = null; }
+  }
+
+  function scheduleProactiveRefresh() {
+    if (proactiveRefreshTimer) clearTimeout(proactiveRefreshTimer);
+    // Refresh token every 10 minutes before the 15-minute expiry
+    proactiveRefreshTimer = setTimeout(async () => {
+      if (shuttingDown) return;
+      const newToken = await refreshToken();
+      if (newToken && isConnected && ws && ws.readyState === 1) {
+        if (process.env.HOOKSWING_DEBUG) {
+          console.log(chalk.gray('\n[DEBUG] Proactive token refresh — reconnecting with new token'));
+        }
+        proactiveReconnect = true;
+        silentReconnect = true;
+        ws.close();
+        reconnectTimer = setTimeout(() => {
+          proactiveReconnect = false;
+          connect(newToken);
+        }, 300);
+      } else {
+        scheduleProactiveRefresh();
+      }
+    }, 10 * 60 * 1000);
   }
 
   function startHeartbeat() {
@@ -155,6 +181,7 @@ async function forward(slug, rawUrl, options) {
       reconnectAttempts = 0;
       authRetries = 0;
       isConnected = true;
+      scheduleProactiveRefresh();
 
       if (silentReconnect) {
         // Briefly show we're back, then resume silent operation
@@ -261,6 +288,11 @@ async function forward(slug, rawUrl, options) {
 
       if (process.env.HOOKSWING_DEBUG) {
         console.log(chalk.gray(`[DEBUG] WebSocket closed — code: ${code}, reason: "${reasonStr}"`));
+      }
+
+      // Proactive reconnect already scheduled
+      if (proactiveReconnect) {
+        return;
       }
 
       // 1008 = Policy Violation — server explicitly rejected us (auth)

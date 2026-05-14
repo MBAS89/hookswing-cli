@@ -18,6 +18,7 @@ program
   .command('login')
   .description('Authenticate with HookSwing')
   .option('--github', 'Login with GitHub OAuth (for users who signed up via GitHub)')
+  .option('--google', 'Login with Google OAuth (for users who signed up via Google)')
   .action(login);
 
 program

@@ -5,69 +5,64 @@ const { URL } = require('url');
 const { writeConfig } = require('../lib/config');
 const { getApi } = require('../lib/api');
 
-async function login(options = {}) {
-  // --- GitHub OAuth login ---
-  if (options.github) {
-    const api = getApi();
-    const baseURL = api.defaults.baseURL.replace('/api', '');
+async function oauthLogin(provider, baseURL) {
+  const server = http.createServer();
+  let serverResolved = false;
 
-    // Start a temporary local HTTP server to receive the callback
-    const server = http.createServer();
-    let serverResolved = false;
+  await new Promise((resolve) => {
+    server.listen(0, '127.0.0.1', resolve);
+  });
 
-    await new Promise((resolve) => {
-      server.listen(0, '127.0.0.1', resolve);
-    });
+  const port = (server.address() || {}).port;
+  if (!port) {
+    console.error(chalk.red('Failed to start local callback server'));
+    process.exit(1);
+  }
 
-    const port = (server.address() || {}).port;
-    if (!port) {
-      console.error(chalk.red('Failed to start local callback server'));
-      process.exit(1);
-    }
+  const authUrl = `${baseURL}/api/auth/${provider}?mode=cli&callback_port=${port}`;
+  const providerName = provider.charAt(0).toUpperCase() + provider.slice(1);
 
-    const githubUrl = `${baseURL}/api/auth/github?mode=cli&callback_port=${port}`;
+  console.log(chalk.cyan(`🔗 ${providerName} OAuth Login`));
+  console.log('');
+  console.log(chalk.gray('Opening browser...'));
+  console.log('');
 
-    console.log(chalk.cyan('🔗 GitHub OAuth Login'));
-    console.log('');
-    console.log(chalk.gray('Opening browser...'));
-    console.log('');
+  // Try to open browser automatically
+  try {
+    const { exec } = require('child_process');
+    const platform = process.platform;
+    if (platform === 'darwin') exec(`open "${authUrl}"`);
+    else if (platform === 'win32') exec(`start "" "${authUrl}"`);
+    else exec(`xdg-open "${authUrl}"`);
+  } catch {
+    console.log(chalk.yellow('Could not open browser automatically.'));
+    console.log(chalk.white('Please open this URL manually:'));
+    console.log(chalk.underline(authUrl));
+  }
 
-    // Try to open browser automatically
-    try {
-      const { exec } = require('child_process');
-      const platform = process.platform;
-      if (platform === 'darwin') exec(`open "${githubUrl}"`);
-      else if (platform === 'win32') exec(`start "" "${githubUrl}"`);
-      else exec(`xdg-open "${githubUrl}"`);
-    } catch {
-      console.log(chalk.yellow('Could not open browser automatically.'));
-      console.log(chalk.white('Please open this URL manually:'));
-      console.log(chalk.underline(githubUrl));
-    }
+  // Wait for the callback
+  const tokens = await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      if (!serverResolved) {
+        server.close();
+        reject(new Error('Login timed out. Please try again.'));
+      }
+    }, 120000); // 2 minute timeout
 
-    // Wait for the callback
-    const tokens = await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        if (!serverResolved) {
-          server.close();
-          reject(new Error('Login timed out. Please try again.'));
-        }
-      }, 120000); // 2 minute timeout
+    server.on('request', (req, res) => {
+      if (serverResolved) return;
 
-      server.on('request', (req, res) => {
-        if (serverResolved) return;
+      const url = new URL(req.url || '/', `http://localhost:${port}`);
+      const accessToken = url.searchParams.get('accessToken');
+      const refreshToken = url.searchParams.get('refreshToken');
 
-        const url = new URL(req.url || '/', `http://localhost:${port}`);
-        const accessToken = url.searchParams.get('accessToken');
-        const refreshToken = url.searchParams.get('refreshToken');
+      if (accessToken && refreshToken) {
+        serverResolved = true;
+        clearTimeout(timeout);
 
-        if (accessToken && refreshToken) {
-          serverResolved = true;
-          clearTimeout(timeout);
-
-          // Show success page in browser
-          res.writeHead(200, { 'Content-Type': 'text/html' });
-          res.end(`<!DOCTYPE html>
+        // Show success page in browser
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(`<!DOCTYPE html>
 <html>
 <head><title>HookSwing CLI — Login Success</title>
 <style>
@@ -87,14 +82,26 @@ p{color:#94a3b8;font-size:14px;line-height:1.5}
 </body>
 </html>`);
 
-          server.close();
-          resolve({ accessToken, refreshToken });
-        } else {
-          res.writeHead(400, { 'Content-Type': 'text/html' });
-          res.end('<h1>Invalid callback</h1><p>Missing tokens. Please try again.</p>');
-        }
-      });
+        server.close();
+        resolve({ accessToken, refreshToken });
+      } else {
+        res.writeHead(400, { 'Content-Type': 'text/html' });
+        res.end('<h1>Invalid callback</h1><p>Missing tokens. Please try again.</p>');
+      }
     });
+  });
+
+  return tokens;
+}
+
+async function login(options = {}) {
+  // --- OAuth login (GitHub or Google) ---
+  if (options.github || options.google) {
+    const api = getApi();
+    const baseURL = api.defaults.baseURL.replace('/api', '');
+    const provider = options.github ? 'github' : 'google';
+
+    const tokens = await oauthLogin(provider, baseURL);
 
     writeConfig({
       apiUrl: baseURL,
@@ -102,7 +109,8 @@ p{color:#94a3b8;font-size:14px;line-height:1.5}
       refreshToken: tokens.refreshToken,
     });
 
-    console.log(chalk.green('✓ Authenticated with GitHub'));
+    const providerName = provider.charAt(0).toUpperCase() + provider.slice(1);
+    console.log(chalk.green(`✓ Authenticated with ${providerName}`));
     return;
   }
 
